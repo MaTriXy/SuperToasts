@@ -1,14 +1,15 @@
 SuperToasts Library
 =================
+###Version 2.0 of the library is in the works as of 2015. Check the [roadmap](https://github.com/JohnPersano/SuperToasts/blob/master/ROADMAP.md) for the list of soon-to-be changes!<br>
+###The Wiki pages are undergoing maintenance to prepare for the version 2.0 release
 
-The SuperToasts library is an enhancement of the stock Android Toast class. This library offers developers new ways of communicating with their users. The idea
-for this library came from the [UndoBar Library](https://code.google.com/p/romannurik-code/source/browse/misc/undobar)
+The SuperToasts library enhances and builds upon the Android Toast class. Some of the features of this library include context sensitive toasts (SuperActivityToasts), toasts with buttons and icons, non context sensitive toasts (SuperToasts), and a new style of toasts (SuperCardToasts) with many customization options for each. Some of the ideas for this library came from the [UndoBar Library](https://code.google.com/p/romannurik-code/source/browse/misc/undobar)
 and the [Crouton Library](https://github.com/keyboardsurfer/Crouton).
 
 
-This is a Beta release, expect bugs.
+###The library is in beta and under active development, expect bugs. <br>
 
-![SuperButtonToast](http://i1331.photobucket.com/albums/w597/JohnPersano/supertoasts_githubimage_zps8a5ceb7c.png)
+![Screenshot](http://i1016.photobucket.com/albums/af284/Turbopwned/supertoasts_group_screenshot_two.png)
 
 
 Adding SuperToasts to your project
@@ -20,7 +21,23 @@ Adding SuperToasts to your project
 4) Right click on your project <br>
 5) Android > Library: Add > SuperToasts <br>
 
-###Maven coming very soon!
+
+###IntelliJ
+1) Download the ZIP file <br>
+2) Extract the SuperToasts project from the ZIP file <br>
+3) In IntelliJ: File > Project Structure > Modules > Add > Import Module > SuperToasts <br>
+4) Select your project module in project structure > Dependencies > Add > Module dependency > SuperToasts
+
+
+###Gradle
+Add this to your project's build.gradle file
+```xml
+dependencies {
+
+    compile 'com.github.johnpersano:supertoasts:1.3.4@aar'
+
+}
+```
 
 
 Using the library
@@ -38,20 +55,15 @@ rather it is a short demonstration of major features/functions of the library.
        src="https://developer.android.com/images/brand/en_app_rgb_wo_60.png" />
 </a>
 
-
-Developed By
-============
-
-John Persano 
-* <johnpersano@gmail.com>
-* [Google+ profile](https://plus.google.com/113019189487162768211/posts)
-
+Developer
+=========
+[John Persano](https://plus.google.com/+JohnPersano)
 
 
 License
 =======
 
-    Copyright 2013 John Persano
+    Copyright 2014 John Persano
 
     Licensed under the Apache License, Version 2.0 (the "License");
     you may not use this file except in compliance with the License.

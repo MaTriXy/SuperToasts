@@ -1,5 +1,5 @@
 /**
- *  Copyright 2013 John Persano
+ *  Copyright 2014 John Persano
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *	you may not use this file except in compliance with the License.
@@ -12,321 +12,445 @@
  *	WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  *	See the License for the specific language governing permissions and
  *	limitations under the License.
- * 
+ *
  */
 
 package com.github.johnpersano.supertoasts;
 
-import java.util.Iterator;
-import java.util.Queue;
-import java.util.concurrent.LinkedBlockingQueue;
-
-
 import android.app.Activity;
 import android.os.Handler;
 import android.os.Message;
-import android.util.Log;
 import android.view.View;
 import android.view.ViewGroup;
+import android.view.animation.*;
 
-/** Manages the life of a SuperActivityToast. Copied from the Crouton library. */
-public class ManagerSuperActivityToast extends Handler {
-	
-	private static final String TAG = "ManagerSuperActivityToast";
+import java.util.Iterator;
+import java.util.LinkedList;
 
-	private static final class Messages {
+/**
+ * Manages the life of a SuperActivityToast. Initial code derived from the Crouton library.
+ */
+class ManagerSuperActivityToast extends Handler {
 
-        /** Hexadecimal numbers that represent acronyms for the operation. **/
-		private static final int DISPLAY_SUPERACTIVITYTOAST = 0x44534154;
-		private static final int ADD_SUPERACTIVITYTOAST = 0x41534154;
-		private static final int REMOVE_SUPERACTIVITYTOAST = 0x52534154;
+    @SuppressWarnings("UnusedDeclaration")
+    private static final String TAG = "ManagerSuperActivityToast";
 
-		private Messages() {
+    /* Potential messages for the handler to send **/
+    private static final class Messages {
 
-			// Do nothing
+        /* Hexadecimal numbers that represent acronyms for the operation. **/
+        private static final int DISPLAY = 0x44534154;
+        private static final int REMOVE = 0x52534154;
 
-		}
+    }
 
-	}
+    private static ManagerSuperActivityToast mManagerSuperActivityToast;
 
-	private static ManagerSuperActivityToast mManagerSuperActivityToast;
+    private final LinkedList<SuperActivityToast> mList;
 
-	private Queue<SuperActivityToast> mQueue;
+    /* Private method to create a new list if the manager is being initialized */
+    private ManagerSuperActivityToast() {
 
-	private ManagerSuperActivityToast() {
+        mList = new LinkedList<SuperActivityToast>();
 
-		mQueue = new LinkedBlockingQueue<SuperActivityToast>();
+    }
 
-	}
+    /**
+     * Singleton method to ensure all SuperActivityToasts are passed through the same manager.
+     */
+    protected static synchronized ManagerSuperActivityToast getInstance() {
 
-	protected static synchronized ManagerSuperActivityToast getInstance() {
+        if (mManagerSuperActivityToast != null) {
 
-		if (mManagerSuperActivityToast != null) {
+            return mManagerSuperActivityToast;
 
-			return mManagerSuperActivityToast;
+        } else {
 
-		} else {
+            mManagerSuperActivityToast = new ManagerSuperActivityToast();
 
-			mManagerSuperActivityToast = new ManagerSuperActivityToast();
+            return mManagerSuperActivityToast;
 
-			return mManagerSuperActivityToast;
+        }
 
-		}
+    }
 
-	}
-	
+    /**
+     * Add a SuperActivityToast to the list. Will show immediately if no other SuperActivityToasts
+     * are in the list.
+     */
+    void add(SuperActivityToast superActivityToast) {
 
-	protected void add(SuperActivityToast superActivityToast) {
+        mList.add(superActivityToast);
 
-		mQueue.add(superActivityToast);
-		this.showNextSuperToast();
+        this.showNextSuperToast();
 
-	}
+    }
 
-	
-	private void showNextSuperToast() {
+    /**
+     * Shows the next SuperActivityToast in the list. Called by add() and when the dismiss animation
+     * of a previously showing SuperActivityToast ends.
+     */
+    private void showNextSuperToast() {
 
-		if (mQueue.isEmpty()) {
+        final SuperActivityToast superActivityToast = mList.peek();
 
-			return;
+        if (mList.isEmpty() || superActivityToast.getActivity() == null) {
 
-		}
+            return;
 
-		final SuperActivityToast superActivityToast = mQueue.peek();
+        }
 
-		if(superActivityToast.getActivity() == null) {
+        if (!superActivityToast.isShowing()) {
 
-			mQueue.poll();
+            final Message message = obtainMessage(Messages.DISPLAY);
+            message.obj = superActivityToast;
+            sendMessage(message);
 
-		}
+        }
 
-		if (!superActivityToast.isShowing()) {
+    }
 
-			sendMessage(superActivityToast, Messages.ADD_SUPERACTIVITYTOAST);
 
-		} else {
+    @Override
+    public void handleMessage(Message message) {
 
-			sendMessageDelayed(superActivityToast,
-					Messages.DISPLAY_SUPERACTIVITYTOAST,
-					getDuration(superActivityToast));
+        final SuperActivityToast superActivityToast = (SuperActivityToast)
+                message.obj;
 
-		}
+        switch (message.what) {
 
-	}
+            case Messages.DISPLAY:
 
-	
-	private void sendMessage(SuperActivityToast superActivityToast,
-			final int messageId) {
+                displaySuperToast(superActivityToast);
 
-		final Message message = obtainMessage(messageId);
-		message.obj = superActivityToast;
-		sendMessage(message);
+                break;
 
-	}
+            case Messages.REMOVE:
 
-	
-	private void sendMessageDelayed(SuperActivityToast superActivityToast,
-			final int messageId, final long delay) {
+                removeSuperToast(superActivityToast);
 
-		Message message = obtainMessage(messageId);
-		message.obj = superActivityToast;
-		sendMessageDelayed(message, delay);
+                break;
 
-	}
+            default: {
 
-	
-	private long getDuration(SuperActivityToast superActivityToast) {
+                super.handleMessage(message);
 
-		long duration = superActivityToast.getDuration();
-		duration += superActivityToast.getShowAnimation().getDuration();
-		duration += superActivityToast.getDismissAnimation().getDuration();
+                break;
 
-		return duration;
+            }
 
-	}
+        }
 
-	@Override
-	public void handleMessage(Message message) {
+    }
 
-		final SuperActivityToast superActivityToast = (SuperActivityToast) 
-				message.obj;
+    /**
+     * Displays a SuperActivityToast.
+     */
+    private void displaySuperToast(SuperActivityToast superActivityToast) {
 
-		switch (message.what) {
+        /* If this SuperActivityToast is somehow already showing do nothing */
+        if(superActivityToast.isShowing()) {
 
-			case Messages.DISPLAY_SUPERACTIVITYTOAST:
-	
-				showNextSuperToast();
-	
-				break;
-	
-			case Messages.ADD_SUPERACTIVITYTOAST:
-	
-				displaySuperToast(superActivityToast);
-	
-				break;
-	
-			case Messages.REMOVE_SUPERACTIVITYTOAST:
-	
-				removeSuperToast(superActivityToast);
-	
-				break;
-	
-			default: {
-	
-				super.handleMessage(message);
-	
-				break;
+            return;
 
-			}
+        }
 
-		}
+        final ViewGroup viewGroup = superActivityToast.getViewGroup();
 
-	}
+        final View toastView = superActivityToast.getView();
 
-	private void displaySuperToast(SuperActivityToast superActivityToast) {
+        if(viewGroup != null) {
 
-		if (superActivityToast.isShowing()) {
+            try {
 
-			return;
+                viewGroup.addView(toastView);
 
-		}
+                if(!superActivityToast.getShowImmediate()) {
 
-		final ViewGroup viewGroup = superActivityToast.getViewGroup();
+                    toastView.startAnimation(getShowAnimation(superActivityToast));
 
-		final View toastView = superActivityToast.getView();
-		
-		//TODO: Temporary fix for orientation change crash.
-		if(viewGroup != null) {
-			
-			try {
-				
-				viewGroup.addView(toastView);
+                }
 
-				toastView.startAnimation(superActivityToast.getShowAnimation());
-				
-			} catch(IllegalStateException e) {
-				
-				Log.e(TAG, e.toString());		
-				
-				clearSuperActivityToastsForActivity(superActivityToast.getActivity());
+            } catch(IllegalStateException e) {
 
-			}
+                this.cancelAllSuperActivityToastsForActivity(superActivityToast.getActivity());
 
-		}
+            }
 
-		
-		if(!superActivityToast.getIsIndeterminate()) {
-			
-			sendMessageDelayed(superActivityToast, Messages.REMOVE_SUPERACTIVITYTOAST,
-					superActivityToast.getDuration() + superActivityToast.getShowAnimation().getDuration());
-			
-		}
+        }
 
-	}
+        /* Dismiss the SuperActivityToast at the set duration time unless indeterminate */
+        if(!superActivityToast.isIndeterminate()) {
 
-	
-	protected void removeSuperToast(SuperActivityToast superActivityToast) {
+            Message message = obtainMessage(Messages.REMOVE);
+            message.obj = superActivityToast;
+            sendMessageDelayed(message, superActivityToast.getDuration() +
+                    getShowAnimation(superActivityToast).getDuration());
 
-		final ViewGroup viewGroup = superActivityToast.getViewGroup();
+        }
 
-		final View toastView = superActivityToast.getView();
+    }
 
-		if (viewGroup != null) {
+    /**
+     *  Hide and remove the SuperActivityToast
+     */
+    void removeSuperToast(final SuperActivityToast superActivityToast) {
 
-			toastView.startAnimation(superActivityToast.getDismissAnimation());
+        /* If SuperActivityToast has been dismissed before it shows, do not attempt to show it */
+        if(!superActivityToast.isShowing()) {
 
-			mQueue.poll();
+            mList.remove(superActivityToast);
 
-			viewGroup.removeView(toastView);
+            return;
 
-			sendMessageDelayed(superActivityToast,
-					Messages.DISPLAY_SUPERACTIVITYTOAST, superActivityToast
-							.getDismissAnimation().getDuration());
-			
-			if(superActivityToast.getOnDismissListener() != null) {
-				
-				superActivityToast.getOnDismissListener().onDismiss();
-				
-			}
+        }
 
-		}
+        /* If being called somewhere else get rid of delayed remove message */
+        removeMessages(Messages.REMOVE, superActivityToast);
 
-	}
-	
+        final ViewGroup viewGroup = superActivityToast.getViewGroup();
 
-	protected void clearQueue() {
+        final View toastView = superActivityToast.getView();
 
-		removeAllMessages();
+        if (viewGroup != null) {
 
-		if (mQueue != null) {
+            Animation animation = getDismissAnimation(superActivityToast);
 
-			for (SuperActivityToast superActivityToast : mQueue) {
+            animation.setAnimationListener(new Animation.AnimationListener() {
 
-				if (superActivityToast.isShowing()) {
+                @Override
+                public void onAnimationStart(Animation animation) {
 
-					superActivityToast.getViewGroup().removeView(
-							superActivityToast.getView());
+                    /* Do nothing */
 
-				}
+                }
 
-			}
+                @Override
+                public void onAnimationEnd(Animation animation) {
 
-			mQueue.clear();
+                    if(superActivityToast.getOnDismissWrapper() != null){
 
-		}
+                        superActivityToast.getOnDismissWrapper().onDismiss(superActivityToast.getView());
 
-	}
+                    }
 
-	protected void clearSuperActivityToastsForActivity(Activity activity) {
+                    /* Show the SuperActivityToast next in the list if any exist */
+                    ManagerSuperActivityToast.this.showNextSuperToast();
 
-		if (mQueue != null) {
+                }
 
-			Iterator<SuperActivityToast> superActivityToastIterator = mQueue
-					.iterator();
+                @Override
+                public void onAnimationRepeat(Animation animation) {
 
-			while (superActivityToastIterator.hasNext()) {
+                    /* Do nothing */
 
-				SuperActivityToast superActivityToast = superActivityToastIterator
-						.next();
+                }
+            });
 
-				if ((superActivityToast.getActivity()) != null
-						&& superActivityToast.getActivity().equals(activity)) {
+            toastView.startAnimation(animation);
 
-					if (superActivityToast.isShowing()) {
+            viewGroup.removeView(toastView);
 
-						superActivityToast.getViewGroup().removeView(
-								superActivityToast.getView());
+            mList.poll();
 
-					}
+        }
 
-					removeAllMessagesForSuperActivityToast(superActivityToast);
+    }
 
-					superActivityToastIterator.remove();
+    /**
+     * Removes all SuperActivityToasts and clears the list
+     */
+    void cancelAllSuperActivityToasts() {
 
-				}
+        removeMessages(Messages.DISPLAY);
+        removeMessages(Messages.REMOVE);
 
-			}
+        for (SuperActivityToast superActivityToast : mList) {
 
-		}
+            if (superActivityToast.isShowing()) {
 
-	}
+                superActivityToast.getViewGroup().removeView(
+                        superActivityToast.getView());
 
-	
-	private void removeAllMessages() {
+                superActivityToast.getViewGroup().invalidate();
 
-		removeMessages(Messages.ADD_SUPERACTIVITYTOAST);
-		removeMessages(Messages.DISPLAY_SUPERACTIVITYTOAST);
-		removeMessages(Messages.REMOVE_SUPERACTIVITYTOAST);
+            }
 
-	}
+        }
 
-	
-	private void removeAllMessagesForSuperActivityToast(
-			SuperActivityToast superActivityToast) {
-		removeMessages(Messages.ADD_SUPERACTIVITYTOAST, superActivityToast);
-		removeMessages(Messages.DISPLAY_SUPERACTIVITYTOAST, superActivityToast);
-		removeMessages(Messages.REMOVE_SUPERACTIVITYTOAST, superActivityToast);
+        mList.clear();
 
-	}
+    }
+
+    /**
+     * Removes all SuperActivityToasts and clears the list for a specific activity
+     */
+    void cancelAllSuperActivityToastsForActivity(Activity activity) {
+
+        Iterator<SuperActivityToast> superActivityToastIterator = mList
+                .iterator();
+
+        while (superActivityToastIterator.hasNext()) {
+
+            SuperActivityToast superActivityToast = superActivityToastIterator
+                    .next();
+
+            if ((superActivityToast.getActivity()) != null
+                    && superActivityToast.getActivity().equals(activity)) {
+
+                if (superActivityToast.isShowing()) {
+
+                    superActivityToast.getViewGroup().removeView(
+                            superActivityToast.getView());
+
+                }
+
+                removeMessages(Messages.DISPLAY, superActivityToast);
+                removeMessages(Messages.REMOVE, superActivityToast);
+
+                superActivityToastIterator.remove();
+
+            }
+
+        }
+
+    }
+
+    /**
+     * Used in SuperActivityToast saveState().
+     */
+    LinkedList<SuperActivityToast> getList(){
+
+        return mList;
+
+    }
+
+    /**
+     * Returns an animation based on the {@link com.github.johnpersano.supertoasts.SuperToast.Animations} enums
+     */
+    private Animation getShowAnimation(SuperActivityToast superActivityToast) {
+
+        if (superActivityToast.getAnimations() == SuperToast.Animations.FLYIN) {
+
+            TranslateAnimation translateAnimation = new TranslateAnimation(
+                    Animation.RELATIVE_TO_SELF, 0.75f, Animation.RELATIVE_TO_SELF, 0.0f,
+                    Animation.RELATIVE_TO_SELF, 0.0f, Animation.RELATIVE_TO_SELF, 0.0f);
+
+            AlphaAnimation alphaAnimation = new AlphaAnimation(0f, 1f);
+
+            AnimationSet animationSet = new AnimationSet(true);
+            animationSet.addAnimation(translateAnimation);
+            animationSet.addAnimation(alphaAnimation);
+            animationSet.setInterpolator(new DecelerateInterpolator());
+            animationSet.setDuration(250);
+
+            return animationSet;
+
+        } else if (superActivityToast.getAnimations() == SuperToast.Animations.SCALE) {
+
+            ScaleAnimation scaleAnimation = new ScaleAnimation(0.9f, 1.0f, 0.9f, 1.0f,
+                    Animation.RELATIVE_TO_SELF, 0.5f, Animation.RELATIVE_TO_SELF, 0.5f);
+
+            AlphaAnimation alphaAnimation = new AlphaAnimation(0f, 1f);
+
+            AnimationSet animationSet = new AnimationSet(true);
+            animationSet.addAnimation(scaleAnimation);
+            animationSet.addAnimation(alphaAnimation);
+            animationSet.setInterpolator(new DecelerateInterpolator());
+            animationSet.setDuration(250);
+
+            return animationSet;
+
+        } else if (superActivityToast.getAnimations() == SuperToast.Animations.POPUP) {
+
+            TranslateAnimation translateAnimation = new TranslateAnimation(
+                    Animation.RELATIVE_TO_SELF, 0.0f, Animation.RELATIVE_TO_SELF, 0.0f,
+                    Animation.RELATIVE_TO_SELF, 0.1f, Animation.RELATIVE_TO_SELF, 0.0f);
+
+            AlphaAnimation alphaAnimation = new AlphaAnimation(0f, 1f);
+
+            AnimationSet animationSet = new AnimationSet(true);
+            animationSet.addAnimation(translateAnimation);
+            animationSet.addAnimation(alphaAnimation);
+            animationSet.setInterpolator(new DecelerateInterpolator());
+            animationSet.setDuration(250);
+
+            return animationSet;
+
+        } else {
+
+            Animation animation= new AlphaAnimation(0f, 1f);
+            animation.setDuration(500);
+            animation.setInterpolator(new DecelerateInterpolator());
+
+            return animation;
+
+        }
+
+    }
+
+    /**
+     *  Returns an animation based on the {@link com.github.johnpersano.supertoasts.SuperToast.Animations} enums
+     */
+    private Animation getDismissAnimation(SuperActivityToast superActivityToast) {
+
+        if (superActivityToast.getAnimations() == SuperToast.Animations.FLYIN) {
+
+            TranslateAnimation translateAnimation = new TranslateAnimation(
+                    Animation.RELATIVE_TO_SELF, 0.0f, Animation.RELATIVE_TO_SELF, .75f,
+                    Animation.RELATIVE_TO_SELF, 0.0f, Animation.RELATIVE_TO_SELF, 0.0f);
+
+            AlphaAnimation alphaAnimation = new AlphaAnimation(1f, 0f);
+
+            AnimationSet animationSet = new AnimationSet(true);
+            animationSet.addAnimation(translateAnimation);
+            animationSet.addAnimation(alphaAnimation);
+            animationSet.setInterpolator(new AccelerateInterpolator());
+            animationSet.setDuration(250);
+
+            return animationSet;
+
+        } else if (superActivityToast.getAnimations() == SuperToast.Animations.SCALE) {
+
+            ScaleAnimation scaleAnimation = new ScaleAnimation(1.0f, 0.9f, 1.0f, 0.9f,
+                    Animation.RELATIVE_TO_SELF, 0.5f, Animation.RELATIVE_TO_SELF, 0.5f);
+
+            AlphaAnimation alphaAnimation = new AlphaAnimation(1f, 0f);
+
+            AnimationSet animationSet = new AnimationSet(true);
+            animationSet.addAnimation(scaleAnimation);
+            animationSet.addAnimation(alphaAnimation);
+            animationSet.setInterpolator(new DecelerateInterpolator());
+            animationSet.setDuration(250);
+
+            return animationSet;
+
+        } else if (superActivityToast.getAnimations() == SuperToast.Animations.POPUP) {
+
+            TranslateAnimation translateAnimation = new TranslateAnimation(
+                    Animation.RELATIVE_TO_SELF, 0.0f, Animation.RELATIVE_TO_SELF, 0.0f,
+                    Animation.RELATIVE_TO_SELF, 0.0f, Animation.RELATIVE_TO_SELF, 0.1f);
+
+            AlphaAnimation alphaAnimation = new AlphaAnimation(1f, 0f);
+
+            AnimationSet animationSet = new AnimationSet(true);
+            animationSet.addAnimation(translateAnimation);
+            animationSet.addAnimation(alphaAnimation);
+            animationSet.setInterpolator(new DecelerateInterpolator());
+            animationSet.setDuration(250);
+
+            return animationSet;
+
+        } else {
+
+            AlphaAnimation alphaAnimation = new AlphaAnimation(1f, 0f);
+            alphaAnimation.setDuration(500);
+            alphaAnimation.setInterpolator(new AccelerateInterpolator());
+
+            return alphaAnimation;
+
+        }
+
+    }
 
 }
